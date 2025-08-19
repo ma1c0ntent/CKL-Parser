@@ -205,5 +205,4 @@ For issues, questions, or feature requests:
 ---
 
 **Version**: 1.0.0  
-**Last Updated**: $(Get-Date -Format "yyyy-MM-dd")  
 **Compatibility**: PowerShell 5.1+, Windows 10/11, Windows Server 2016+
