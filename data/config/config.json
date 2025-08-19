@@ -1,0 +1,19 @@
+{
+    "filePaths": {
+        "checklistDirectory":"data\\imports",
+        "outputDirectory": "data\\reports",
+        "logDirectory": "data\\logs"
+    },
+    "logging": {
+        "logLevel": "INFO",
+        "logToFile": true,
+        "logToConsole": true,
+        "maxLogFileSizeMB": 10,
+        "maxLogFiles": 5
+    },
+    "outputSettings" : {
+        "includeTimestamp": true,
+        "outputFormats" : ["CSV"]
+    },
+    "version": "1.0.0"
+}
