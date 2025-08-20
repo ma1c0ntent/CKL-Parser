@@ -263,9 +263,3 @@ For issues, questions, or feature requests:
 
 ### Version 1.0.0
 - 🚀 **Initial Release**: Basic CKL/CKLB parsing and reporting functionality
-
----
-
-**Version**: 1.1.0  
-**Last Updated**: 2025-08-19  
-**Compatibility**: PowerShell 5.1+, Windows 10/11, Windows Server 2016+
