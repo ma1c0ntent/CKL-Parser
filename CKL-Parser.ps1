@@ -118,6 +118,44 @@ Function Read-Configuration {
     }
 }
 
+Function Test-VarianceFilter {
+    param(
+        [PSCustomObject]$Rule,
+        [PSCustomObject]$VarianceConfig
+    )
+    
+    # If no variance configuration, include all rules
+    if (-not $VarianceConfig -or (-not $VarianceConfig.comments -and -not $VarianceConfig.'V-ID')) {
+        return @{ Excluded = $true; Reason = "No Variance Config" }
+    }
+    
+    # Check if rule should be excluded based on variance.comments
+    if ($VarianceConfig.comments -and $VarianceConfig.comments.Count -gt 0) {
+        Write-Log -Level "DEBUG" -Component "Variance-Filter" -Message "Checking comment filtering for rule $($Rule.VulnID) - Comments: '$($Rule.Comments)' against terms: $($VarianceConfig.comments -join ', ')"
+        foreach ($commentTerm in $VarianceConfig.comments) {
+            if ($commentTerm -and $commentTerm.Trim() -ne "" -and $Rule.Comments -match $commentTerm) {
+                Write-Log -Level "DEBUG" -Component "Variance-Filter" -Message "Excluding rule $($Rule.VulnID) due to matching comment term: '$commentTerm'"
+                return @{ Excluded = $false; Reason = "Comment Match: '$commentTerm'" }
+            }
+        }
+    }
+    
+
+    
+    # Check if rule should be excluded based on variance.V-ID
+    if ($VarianceConfig.'V-ID' -and $VarianceConfig.'V-ID'.Count -gt 0) {
+        Write-Log -Level "DEBUG" -Component "Variance-Filter" -Message "Checking V-ID filtering for rule $($Rule.VulnID) against V-IDs: $($VarianceConfig.'V-ID' -join ', ')"
+        foreach ($vulnID in $VarianceConfig.'V-ID') {
+            if ($vulnID -and $vulnID.Trim() -ne "" -and $Rule.VulnID -eq $vulnID) {
+                Write-Log -Level "DEBUG" -Component "Variance-Filter" -Message "Excluding rule $($Rule.VulnID) due to matching V-ID: '$vulnID'"
+                return @{ Excluded = $false; Reason = "V-ID Match: '$vulnID'" }
+            }
+        }
+    }
+    
+    return @{ Excluded = $true; Reason = "Not Excluded" }
+}
+
 Function Export-Results {
     param(
         [array]$Data,
@@ -176,6 +214,21 @@ try {
     Write-Log -Level "INFO" -Component "Main" -Message "Reading configuration from $ConfigPath"
     Write-Log -Level "INFO" -Component "Main" -Message "Log Directory: $($logger.LogDirectory)"
     Write-Log -Level "INFO" -Component "Main" -Message "Log File: $($logger.LogFile)"
+    
+    # Log variance configuration if present
+    if ($config.variance) {
+        if ($config.variance.comments -and $config.variance.comments.Count -gt 0) {
+            Write-Log -Level "INFO" -Component "Main" -Message "Variance filtering enabled for comments: $($config.variance.comments -join ', ')"
+        }
+        if ($config.variance.'V-ID' -and $config.variance.'V-ID'.Count -gt 0) {
+            Write-Log -Level "INFO" -Component "Main" -Message "Variance filtering enabled for V-IDs: $($config.variance.'V-ID' -join ', ')"
+        }
+        if (-not $config.variance.comments -and -not $config.variance.'V-ID') {
+            Write-Log -Level "INFO" -Component "Main" -Message "Variance filtering configured but no filter terms specified"
+        }
+    } else {
+        Write-Log -Level "INFO" -Component "Main" -Message "No variance filtering configured"
+    }
 
     Write-Log -Level "INFO" -Component "Import" -Message "Reading checklist files from $($config.filePaths.checklistDirectory)"
     
@@ -194,6 +247,7 @@ try {
     }
 
     $summary = @()
+    $excludedItems = @()
 
     ForEach ($File in $Files) {
 
@@ -227,7 +281,25 @@ try {
                 }
             }
 
-            $summary += $rules | WHere-Object { $_.Status -match "Open"} | Select-Object STIG, STIGID, RuleID, VulnID, Title, Discussion, Check, FixText, Severity, Status, FindingDetails, Comments, IS, HostName, IP, "CKL/CKLB"
+            # Separate included and excluded rules
+            $includedRules = @()
+            $excludedRules = @()
+            
+            foreach ($rule in $rules) {
+                if ($rule.Status -match "Open") {
+                    $varianceResult = Test-VarianceFilter -Rule $rule -VarianceConfig $config.variance
+                    if ($varianceResult.Excluded) {
+                        $includedRules += $rule
+                    } else {
+                        # Add exclusion reason to the rule
+                        $rule | Add-Member -NotePropertyName "ExclusionReason" -NotePropertyValue $varianceResult.Reason -Force
+                        $excludedRules += $rule
+                    }
+                }
+            }
+            
+            $summary += $includedRules | Select-Object STIG, STIGID, RuleID, VulnID, Title, Discussion, Check, FixText, Severity, Status, FindingDetails, Comments, IS, HostName, IP, "CKL/CKLB"
+            $excludedItems += $excludedRules | Select-Object STIG, STIGID, RuleID, VulnID, Title, Discussion, Check, FixText, Severity, Status, FindingDetails, Comments, IS, HostName, IP, "CKL/CKLB", ExclusionReason
 
             Write-Log -Level "INFO" -Component "JSON Parse" -Message "Parsed $($file | Split-Path -Leaf)"
 
@@ -235,10 +307,49 @@ try {
         }
         ElseIf ( $File.EndsWith(".ckl") ) {
             $xml = [xml](Get-Content $File)
-            $ns = $xml.DocumentElement.NamespaceURI
+            
+            # Handle multiple namespace scenarios
             $nsm = New-Object System.Xml.XmlNamespaceManager($xml.NameTable)
-            $nsm.AddNamespace('ns', $ns)
-            $items = $xml.SelectNodes("//ns:VULN", $nsm)
+            $items = $null
+            
+            # Get the document element to determine the namespace structure
+            $rootNamespace = $xml.DocumentElement.NamespaceURI
+            
+            if ($rootNamespace) {
+                $nsm.AddNamespace('ns', $rootNamespace)
+                $nsm.AddNamespace('xccdf', 'http://checklists.nist.gov/xccdf/1.1')
+                $nsm.AddNamespace('cci', 'http://iase.disa.mil/cci')
+                
+                # Try different namespace approaches in order of preference
+                Write-Log -Level "DEBUG" -Component "XML Parse" -Message "Attempting to parse VULN elements with multiple namespace approaches"
+                
+                # 1. Try iSTIG namespace (most common)
+                $items = $xml.SelectNodes("//cci:VULN", $nsm)
+                if ($items -and $items.Count -gt 0) {
+                    Write-Log -Level "DEBUG" -Component "XML Parse" -Message "Found VULN elements using cci namespace"
+                } else {
+                    # 2. Try root namespace 
+                    $items = $xml.SelectNodes("//ns:VULN", $nsm)
+                    if ($items -and $items.Count -gt 0) {
+                        Write-Log -Level "DEBUG" -Component "XML Parse" -Message "Found VULN elements using root namespace (ns)"
+                    } else {
+                        # 3. Try xccdf namespace explicitly
+                        $items = $xml.SelectNodes("//xccdf:VULN", $nsm)
+                        if ($items -and $items.Count -gt 0) {
+                            Write-Log -Level "DEBUG" -Component "XML Parse" -Message "Found VULN elements using xccdf namespace"
+                        }
+                    }
+                }
+            }
+            
+            # Final fallback: no namespace
+            if (-not $items -or $items.Count -eq 0) {
+                Write-Log -Level "DEBUG" -Component "XML Parse" -Message "No VULN elements found with any namespace, trying no-namespace approach"
+                $items = $xml.SelectNodes("//VULN")
+                if ($items -and $items.Count -gt 0) {
+                    Write-Log -Level "DEBUG" -Component "XML Parse" -Message "Found VULN elements using no-namespace approach"
+                }
+            }
 
             $rules = @()
             
@@ -279,8 +390,28 @@ try {
                 
                 $rules += $rule
             }
+            
 
-            $summary += $rules | Where-Object { $_.Status -match "Open"} | Select-Object STIG, STIGID, RuleID, VulnID, Title, Discussion, Check, FixText, Severity, Status, FindingDetails, Comments, IS, HostName, IP, "CKL/CKLB"
+
+            # Separate included and excluded rules
+            $includedRules = @()
+            $excludedRules = @()
+            
+            foreach ($rule in $rules) {
+                if ($rule.Status -match "Open") {
+                    $varianceResult = Test-VarianceFilter -Rule $rule -VarianceConfig $config.variance
+                    if ($varianceResult.Excluded) {
+                        $includedRules += $rule
+                    } else {
+                        # Add exclusion reason to the rule
+                        $rule | Add-Member -NotePropertyName "ExclusionReason" -NotePropertyValue $varianceResult.Reason -Force
+                        $excludedRules += $rule
+                    }
+                }
+            }
+            
+            $summary += $includedRules | Select-Object STIG, STIGID, RuleID, VulnID, Title, Discussion, Check, FixText, Severity, Status, FindingDetails, Comments, IS, HostName, IP, "CKL/CKLB"
+            $excludedItems += $excludedRules | Select-Object STIG, STIGID, RuleID, VulnID, Title, Discussion, Check, FixText, Severity, Status, FindingDetails, Comments, IS, HostName, IP, "CKL/CKLB", ExclusionReason
             Write-Log -Level "INFO" -Component "XML Parse" -Message "Parsed $($file | Split-Path -Leaf)"
 
             Continue
@@ -288,6 +419,30 @@ try {
     }
 
     Export-Results -Data $summary -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp
+
+    # Export excluded items (variance filtered out)
+    if ($excludedItems.Count -gt 0) {
+        $Script:baseFileName = "excludedResults"
+        Export-Results -Data $excludedItems -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp
+        
+        # Create summary of excluded items
+        $excludedVulSum = $excludedItems | Group-Object "VulnID" | ForEach-Object {
+            [PSCustomObject]@{
+                "V-ID" = $_.Name
+                "Count" = $_.Count
+                "Severity" = $_.Group[0].Severity
+                "RuleTitle" = $_.Group[0].Title
+                "ExclusionReason" = $_.Group[0].ExclusionReason
+            }
+        }
+        
+        $Script:baseFileName = "excludedSummary"
+        Export-Results -Data $excludedVulSum -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp
+        
+        Write-Log -Level "INFO" -Component "Main" -Message "Exported $($excludedItems.Count) excluded items and $($excludedVulSum.Count) unique excluded vulnerability IDs"
+    } else {
+        Write-Log -Level "INFO" -Component "Main" -Message "No items were excluded by variance filtering"
+    }
 
     $vulSum = $summary | Group-Object "VulnID" | ForEach-Object {
         [PSCustomObject]@{
@@ -313,11 +468,13 @@ try {
     Write-Log -Level "INFO" -Component "Main" -Message "Records Per Second: $($recordsPerSecond)"
 
     Write-Log -Level "INFO" -Component "Main" -Message "==== DATA SUMMARY ===="
-    Write-Log -Level "INFO" -COmponent "Main" -Message "Total Checklists: $($Files.Count)"
+    Write-Log -Level "INFO" -Component "Main" -Message "Total Checklists: $($Files.Count)"
     Write-Log -Level "INFO" -Component "Main" -Message "Total Open Entries: $($summary.Count)"
     Write-Log -Level "INFO" -Component "Main" -Message "Total Unique Vulnerability IDs: $($vulSum.Count)"
+    Write-Log -Level "INFO" -Component "Main" -Message "Total Excluded Items: $($excludedItems.Count)"
+    Write-Log -Level "INFO" -Component "Main" -Message "Total Unique Excluded Vulnerability IDs: $($excludedItems | Group-Object 'VulnID' | Measure-Object | Select-Object -ExpandProperty Count)"
 
-    Write-Log -Leevel "INFO" -Component "Main" -Message "==== END SCRIPT ===="
+    Write-Log -Level "INFO" -Component "Main" -Message "==== END SCRIPT ===="
 
 }
 catch {
