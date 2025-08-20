@@ -335,7 +335,7 @@ try {
                     Severity = $rule.severity
                     HostName = $hostname
                     IP = $ip
-                    IS = "3848"
+                    IS = if($null -ne $config.systemInfo.informationSystem) { $config.systemInfo.informationSystem } else { "" }
                     "CKL/CKLB" = "CKLB"
                 }
             }
@@ -443,7 +443,7 @@ try {
                     Severity = $hash.Severity
                     HostName = $hostName
                     IP = $hostIP
-                    IS = "3848"
+                    IS = if($null -ne $config.systemInfo.informationSystem) { $config.systemInfo.informationSystem } else { "" }
                     "CKL/CKLB" = "CKL"
                 }
                 
