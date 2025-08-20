@@ -23,6 +23,7 @@ The CKL-Parser is designed to help security professionals, system administrators
 - **Configurable**: Easy-to-modify configuration file for customization
 - **Error Handling**: Robust error handling with detailed logging
 - **Excluded Items Reporting**: Separate reports for filtered variance items
+- **Smart Directory Handling**: Consistent path resolution for imports, exports, and logs
 
 ## 📁 Project Structure
 
@@ -36,7 +37,9 @@ CKL-Parser-main/
 │   │   └── sample.ckl      # Sample checklist file
 │   ├── logs/               # Log files directory
 │   └── reports/            # Output reports directory
-└── README.md               # This file
+├── README.md               # This file
+├── VERSIONING.md           # Versioning guidelines and strategy
+└── CHANGELOG.md            # Detailed change history
 ```
 
 ## 🚀 Getting Started
@@ -93,6 +96,11 @@ The `config.json` file controls various aspects of the parser:
     "logDirectory": "data\\logs"              # Log files directory
 }
 ```
+
+**Smart Path Resolution**: All directory paths support both absolute and relative paths:
+- **Absolute Paths**: Use full system paths (e.g., `C:\Reports\Output`)
+- **Relative Paths**: Use paths relative to script location (e.g., `data\reports`)
+- **Automatic Fallback**: If relative path fails, automatically falls back to script-relative paths
 
 ### Logging Settings
 ```json
@@ -239,6 +247,13 @@ Customize JSON output formatting:
 - **Integration**: Use `maxDepth: 10` for most use cases, increase if needed for complex data
 - **Command Line**: Use `-CompressJson` flag to override configuration for one-time exports
 
+### Directory Path Best Practices
+
+- **Portable Deployments**: Use relative paths (e.g., `data\reports`) for easy script relocation
+- **Production Systems**: Use absolute paths (e.g., `C:\Production\Reports`) for fixed locations
+- **Mixed Environments**: Script automatically handles both path types with intelligent fallbacks
+- **Path Consistency**: All three directory types (imports, exports, logs) use the same resolution logic
+
 ### Adding New Output Formats
 To add new output formats, modify the `Export-Results` function in the script and update the configuration file.
 
@@ -297,17 +312,8 @@ For issues, questions, or feature requests:
 - Check the configuration file for syntax errors
 - Ensure all required directories exist and are accessible
 
+
 ---
 
-## 📋 Changelog
-
-### Version 1.1.0 (Current)
-- ✨ **Added Variance Filtering**: Automatically filter out variance items based on configurable criteria
-- 🔧 **Enhanced Namespace Handling**: Robust XML parsing with multiple namespace fallback strategies
-- 📊 **New Output Reports**: Separate reports for excluded items with detailed exclusion reasons
-- 🐛 **Improved Error Handling**: Better fallback mechanisms for different CKL file formats
-- 📝 **Enhanced Logging**: Detailed debug information for namespace parsing and variance filtering
-- 📄 **Enhanced JSON Export**: Configurable JSON formatting with pretty printing, depth control, compression options, and command-line overrides
-
-### Version 1.0.0
-- 🚀 **Initial Release**: Basic CKL/CKLB parsing and reporting functionality
+📖 **For detailed versioning information, see [VERSIONING.md](VERSIONING.md)**  
+📋 **For complete change history, see [CHANGELOG.md](CHANGELOG.md)**
