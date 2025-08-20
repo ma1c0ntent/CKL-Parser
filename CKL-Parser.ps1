@@ -1,7 +1,8 @@
 param(
     [string]$ConfigPath = "$PSScriptRoot\data\config\config.json",
     [string]$OutputFormat = "",
-    [switch]$NoLog
+    [switch]$NoLog,
+    [switch]$CompressJson
 )
 
 $scriptStartTime = Get-Date
@@ -161,7 +162,8 @@ Function Export-Results {
         [array]$Data,
         [string]$OutputDirectory,
         [array]$Formats,
-        [bool]$IncludeTimestamp
+        [bool]$IncludeTimestamp,
+        [PSCustomObject]$JsonSettings = $null
     )
 
     $timestamp = if ($IncludeTimestamp) { "$(Get-Date -Format 'yyyy-MM-dd HHmmss')" } else { "" }
@@ -189,8 +191,32 @@ Function Export-Results {
                 }
                 "JSON" {
                     $jsonPath = Join-Path $OutputDirectory "$($baseFileName).json"
-                    $Data | ConvertTo-Json | Out-File -FilePath $jsonPath -Encoding UTF8
-                    Write-Log -Level "INFO" -Component "Export-Results" -Message "Exported results to JSON: $jsonPath"
+                    try {
+                        # Enhanced JSON export with configurable formatting
+                        $depth = if ($JsonSettings -and $JsonSettings.maxDepth) { $JsonSettings.maxDepth } else { 10 }
+                        $compress = if ($JsonSettings -and $JsonSettings.compress -ne $null) { $JsonSettings.compress } else { $false }
+                        
+                        $jsonContent = $Data | ConvertTo-Json -Depth $depth -Compress:$compress
+                        
+                        # Apply pretty printing if configured
+                        if ($JsonSettings -and $JsonSettings.prettyPrint -eq $true) {
+                            $jsonContent = $jsonContent | ConvertFrom-Json | ConvertTo-Json -Depth $depth -Compress:$false
+                        }
+                        
+                        $jsonContent | Out-File -FilePath $jsonPath -Encoding UTF8 -ErrorAction Stop
+                        Write-Log -Level "INFO" -Component "Export-Results" -Message "Exported results to JSON: $jsonPath (Depth: $depth, Compressed: $compress)"
+                    }
+                    catch {
+                        Write-Log -Level "ERROR" -Component "Export-Results" -Message "Failed to export JSON: $($_.Exception.Message)"
+                        # Fallback to basic JSON export
+                        try {
+                            $Data | ConvertTo-Json | Out-File -FilePath $jsonPath -Encoding UTF8 -ErrorAction Stop
+                            Write-Log -Level "INFO" -Component "Export-Results" -Message "Exported results to JSON (fallback): $jsonPath"
+                        }
+                        catch {
+                            Write-Log -Level "ERROR" -Component "Export-Results" -Message "JSON export completely failed: $($_.Exception.Message)"
+                        }
+                    }
                 }
                 default {
                     Write-Log -Level "ERROR" -Component "Export-Results" -Message "Unsupported output format: $format"
@@ -214,6 +240,12 @@ try {
     Write-Log -Level "INFO" -Component "Main" -Message "Reading configuration from $ConfigPath"
     Write-Log -Level "INFO" -Component "Main" -Message "Log Directory: $($logger.LogDirectory)"
     Write-Log -Level "INFO" -Component "Main" -Message "Log File: $($logger.LogFile)"
+    
+    # Override JSON compression if specified via command line
+    if ($CompressJson -and $config.outputSettings.jsonSettings) {
+        $config.outputSettings.jsonSettings.compress = $true
+        Write-Log -Level "INFO" -Component "Main" -Message "JSON compression enabled via command line parameter"
+    }
     
     # Log variance configuration if present
     if ($config.variance) {
@@ -418,12 +450,12 @@ try {
         }
     }
 
-    Export-Results -Data $summary -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp
+                    Export-Results -Data $summary -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp -JsonSettings $config.outputSettings.jsonSettings
 
     # Export excluded items (variance filtered out)
     if ($excludedItems.Count -gt 0) {
         $Script:baseFileName = "excludedResults"
-        Export-Results -Data $excludedItems -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp
+                            Export-Results -Data $excludedItems -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp -JsonSettings $config.outputSettings.jsonSettings
         
         # Create summary of excluded items
         $excludedVulSum = $excludedItems | Group-Object "VulnID" | ForEach-Object {
@@ -437,7 +469,7 @@ try {
         }
         
         $Script:baseFileName = "excludedSummary"
-        Export-Results -Data $excludedVulSum -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp
+                            Export-Results -Data $excludedVulSum -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp -JsonSettings $config.outputSettings.jsonSettings
         
         Write-Log -Level "INFO" -Component "Main" -Message "Exported $($excludedItems.Count) excluded items and $($excludedVulSum.Count) unique excluded vulnerability IDs"
     } else {
@@ -455,7 +487,7 @@ try {
 
     $Script:baseFileName = "summaryResults"
 
-    Export-Results -Data $vulSum -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp
+                    Export-Results -Data $vulSum -OutputDirectory $config.filePaths.outputDirectory -Formats $config.outputSettings.outputFormats -IncludeTimestamp $config.outputSettings.includeTimestamp -JsonSettings $config.outputSettings.jsonSettings
 
     $scriptEndTime = Get-Date
     $scriptDuration = $scriptEndTime - $scriptStartTime
