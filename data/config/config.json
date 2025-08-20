@@ -5,7 +5,7 @@
         "logDirectory": "data\\logs"
     },
     "logging": {
-        "logLevel": "INFO",
+        "logLevel": "DEBUG",
         "logToFile": true,
         "logToConsole": true,
         "maxLogFileSizeMB": 10,
@@ -15,5 +15,10 @@
         "includeTimestamp": true,
         "outputFormats" : ["CSV"]
     },
-    "version": "1.0.0"
+    "version": "1.1.0",
+
+    "variance": {
+        "comments" : [""],
+        "V-ID" : [""]
+    }
 }
