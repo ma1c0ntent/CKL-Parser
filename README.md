@@ -67,7 +67,19 @@ CKL-Parser-main/
 
 # Run with specific output format
 .\CKL-Parser.ps1 -OutputFormat "CSV"
+
+# Run with JSON compression enabled
+.\CKL-Parser.ps1 -CompressJson
 ```
+
+### Command-Line Parameters
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `-ConfigPath` | Path to custom configuration file | `-ConfigPath "custom\config.json"` |
+| `-OutputFormat` | Override output format from config | `-OutputFormat "CSV"` |
+| `-NoLog` | Disable logging to file | `-NoLog` |
+| `-CompressJson` | Enable JSON compression | `-CompressJson` |
 
 ## ⚙️ Configuration
 
@@ -97,7 +109,12 @@ The `config.json` file controls various aspects of the parser:
 ```json
 "outputSettings": {
     "includeTimestamp": true,                 # Add timestamp to output files
-    "outputFormats": ["CSV"]                  # Output formats: CSV, JSON
+    "outputFormats": ["CSV", "JSON"],         # Output formats: CSV, JSON
+    "jsonSettings": {
+        "prettyPrint": true,                  # Enable pretty-printed JSON
+        "maxDepth": 10,                       # Maximum nesting depth for JSON
+        "compress": false                     # Enable/disable JSON compression
+    }
 }
 ```
 
@@ -149,6 +166,14 @@ Summary of excluded items by vulnerability ID:
 - Rule Title
 - Exclusion Reason (Comment Match or V-ID Match)
 
+### JSON Export Features
+All reports are also available in JSON format with configurable options:
+- **Pretty Printing**: Human-readable formatting with proper indentation
+- **Configurable Depth**: Control maximum nesting levels (default: 10)
+- **Compression Options**: Choose between compact or readable JSON
+- **Error Handling**: Robust fallback mechanisms for export failures
+- **UTF-8 Encoding**: Proper character encoding for international content
+
 ## 🔍 Supported File Formats
 
 ### CKL Files (XML)
@@ -191,6 +216,28 @@ The variance filtering system allows you to customize what gets excluded:
 
 **Comment Keywords**: Add or modify keywords to match against rule comments
 **V-ID List**: Add specific vulnerability IDs to exclude regardless of content
+
+### JSON Export Configuration
+Customize JSON output formatting:
+
+```json
+"jsonSettings": {
+    "prettyPrint": true,      # Enable pretty-printed JSON (recommended)
+    "maxDepth": 10,           # Maximum nesting depth (1-100)
+    "compress": false         # Enable compact JSON (true/false)
+}
+```
+
+**Pretty Print**: When enabled, JSON is formatted with proper indentation for readability
+**Max Depth**: Controls how deep nested objects are serialized (prevents circular reference issues)
+**Compression**: When true, removes all whitespace for minimal file size
+
+### JSON Export Best Practices
+
+- **Development/Testing**: Use `prettyPrint: true` and `compress: false` for readable output
+- **Production/Storage**: Use `compress: true` for minimal file size
+- **Integration**: Use `maxDepth: 10` for most use cases, increase if needed for complex data
+- **Command Line**: Use `-CompressJson` flag to override configuration for one-time exports
 
 ### Adding New Output Formats
 To add new output formats, modify the `Export-Results` function in the script and update the configuration file.
@@ -260,6 +307,7 @@ For issues, questions, or feature requests:
 - 📊 **New Output Reports**: Separate reports for excluded items with detailed exclusion reasons
 - 🐛 **Improved Error Handling**: Better fallback mechanisms for different CKL file formats
 - 📝 **Enhanced Logging**: Detailed debug information for namespace parsing and variance filtering
+- 📄 **Enhanced JSON Export**: Configurable JSON formatting with pretty printing, depth control, compression options, and command-line overrides
 
 ### Version 1.0.0
 - 🚀 **Initial Release**: Basic CKL/CKLB parsing and reporting functionality
