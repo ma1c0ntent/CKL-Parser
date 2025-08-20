@@ -18,13 +18,27 @@ Function Initialize-Logger {
     $logLevel = $LogConfig.logLevel
     $logToFile = $LogConfig.logToFile
     $logToConsole = $LogConfig.logToConsole
-    $logDir = Join-Path $PSScriptRoot -ChildPath $config.filePaths.logDirectory
+    # Handle log directory path similar to import/export directory logic
+    $logDir = $config.filePaths.logDirectory
+    
+    # First try the path as-is
+    if (Test-Path -Path $config.filePaths.logDirectory -ErrorAction SilentlyContinue) {
+        $logDir = $config.filePaths.logDirectory
+    }
+    # Then try joining with PSScriptRoot if the first attempt fails
+    ElseIf (Test-Path -Path $(Join-Path $PSScriptRoot -ChildPath $config.filePaths.logDirectory) -ErrorAction SilentlyContinue) {
+        $logDir = Join-Path $PSScriptRoot -ChildPath $config.filePaths.logDirectory
+    }
+    # If neither exists, create the directory using PSScriptRoot as base
+    Else {
+        $logDir = Join-Path $PSScriptRoot -ChildPath $config.filePaths.logDirectory
+        if ($logToFile -and -not (Test-Path $logDir)) {
+            New-Item -Path $logDir -ItemType Directory -Force | Out-Null
+        }
+    }
+    
     $maxLogFileSizeMB = $LogConfig.maxLogFileSizeMB
     $maxLogFiles = $LogConfig.maxLogFiles
-
-    if ($logToFile -and -not (Test-Path $logDir)) {
-        New-Item -Path $logDir -ItemType Directory -Force | Out-Null
-    }
 
     $logger = @{
         LogLevel = $logLevel
@@ -174,23 +188,36 @@ Function Export-Results {
         $baseFileName = $baseFileName + $timestamp
     }
     
-    $OutputDirectory = Join-Path $PSScriptRoot -ChildPath $OutputDirectory
-
-    if (-not (Test-Path $OutputDirectory)) {
-        New-Item -Path $OutputDirectory -ItemType Directory -Force | Out-Null
-        Write-Log -Level "INFO" -Component "Export-Results" -Message "Created output directory: $OutputDirectory"
+    # Handle output directory path similar to import directory logic
+    $FinalOutputDirectory = $OutputDirectory
+    
+    # First try the path as-is
+    if (Test-Path -Path $OutputDirectory -ErrorAction SilentlyContinue) {
+        $FinalOutputDirectory = $OutputDirectory
+    }
+    # Then try joining with PSScriptRoot if the first attempt fails
+    ElseIf (Test-Path -Path $(Join-Path $PSScriptRoot -ChildPath $OutputDirectory) -ErrorAction SilentlyContinue) {
+        $FinalOutputDirectory = Join-Path $PSScriptRoot -ChildPath $OutputDirectory
+    }
+    # If neither exists, create the directory using PSScriptRoot as base
+    Else {
+        $FinalOutputDirectory = Join-Path $PSScriptRoot -ChildPath $OutputDirectory
+        if (-not (Test-Path $FinalOutputDirectory)) {
+            New-Item -Path $FinalOutputDirectory -ItemType Directory -Force | Out-Null
+            Write-Log -Level "INFO" -Component "Export-Results" -Message "Created output directory: $FinalOutputDirectory"
+        }
     }
 
     ForEach ($Format in $Formats) {
         try {
             switch ($format.ToUpper()) {
                 "CSV" {
-                    $csvPath = Join-Path $OutputDirectory "$($baseFileName).csv"
+                    $csvPath = Join-Path $FinalOutputDirectory "$($baseFileName).csv"
                     $Data | Export-Csv -Path $csvPath -NoTypeInformation -Encoding UTF8
                     Write-Log -Level "INFO" -Component "Export-Results" -Message "Exported results to CSV: $csvPath"
                 }
                 "JSON" {
-                    $jsonPath = Join-Path $OutputDirectory "$($baseFileName).json"
+                    $jsonPath = Join-Path $FinalOutputDirectory "$($baseFileName).json"
                     try {
                         # Enhanced JSON export with configurable formatting
                         $depth = if ($JsonSettings -and $JsonSettings.maxDepth) { $JsonSettings.maxDepth } else { 10 }
