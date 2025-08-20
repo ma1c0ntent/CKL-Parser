@@ -14,12 +14,15 @@ The CKL-Parser is designed to help security professionals, system administrators
 ## ✨ Features
 
 - **Multi-format Support**: Handles both CKL (XML) and CKLB (JSON) file formats
+- **Advanced Namespace Handling**: Robust XML parsing with multiple namespace fallback strategies
+- **Variance Filtering**: Automatically filters out variance items based on configurable criteria
 - **Batch Processing**: Processes multiple checklist files in a single run
 - **Flexible Output**: Exports results in CSV and JSON formats
 - **Comprehensive Logging**: Built-in logging system with configurable levels and rotation
 - **Performance Metrics**: Tracks processing speed and provides execution statistics
 - **Configurable**: Easy-to-modify configuration file for customization
 - **Error Handling**: Robust error handling with detailed logging
+- **Excluded Items Reporting**: Separate reports for filtered variance items
 
 ## 📁 Project Structure
 
@@ -98,9 +101,21 @@ The `config.json` file controls various aspects of the parser:
 }
 ```
 
+### Variance Filtering
+```json
+"variance": {
+    "comments": ["variance", "false positive", "not applicable"],
+    "V-ID": ["V-220837", "V-254240", "V-230301"]
+}
+```
+
+The variance filtering allows you to automatically exclude specific items:
+- **Comment-based filtering**: Excludes rules with comments containing specified keywords
+- **V-ID filtering**: Excludes specific vulnerability IDs regardless of content
+
 ## 📊 Output Files
 
-The parser generates two main types of reports:
+The parser generates four types of reports:
 
 ### 1. Detailed Results (`parsedResultsYYYY-MM-dd hhmmss.csv`)
 Contains all parsed vulnerability entries with fields:
@@ -121,6 +136,19 @@ Provides a consolidated view of vulnerabilities:
 - Severity level
 - Rule Title
 
+### 3. Excluded Items Report (`excludedResultsYYYY-MM-dd hhmmss.csv`)
+Contains all items filtered out by variance filtering:
+- Same fields as detailed results
+- Additional "ExclusionReason" field showing why item was excluded
+
+### 4. Excluded Summary (`excludedSummaryYYYY-MM-dd hhmmss.csv`)
+Summary of excluded items by vulnerability ID:
+- Vulnerability ID
+- Count of excluded instances
+- Severity level
+- Rule Title
+- Exclusion Reason (Comment Match or V-ID Match)
+
 ## 🔍 Supported File Formats
 
 ### CKL Files (XML)
@@ -128,6 +156,11 @@ Provides a consolidated view of vulnerabilities:
 - XML-based structure
 - Contains detailed vulnerability information
 - Extracts host name, IP address, and rule details
+- **Advanced Namespace Support**: Automatically handles multiple XML namespace scenarios:
+  - iSTIG namespace (`//cci:VULN`)
+  - Root namespace (`//ns:VULN`)
+  - XCCDF namespace (`//xccdf:VULN`)
+  - No namespace fallback (`//VULN`)
 
 ### CKLB Files (JSON)
 - STIG Checklist Bundle format
@@ -145,6 +178,19 @@ The parser includes a comprehensive logging system:
 - **Performance Tracking**: Execution time and processing metrics
 
 ## 🛠️ Customization
+
+### Variance Filtering Configuration
+The variance filtering system allows you to customize what gets excluded:
+
+```json
+"variance": {
+    "comments": ["variance", "false positive", "not applicable", "custom term"],
+    "V-ID": ["V-123456", "V-789012", "V-345678"]
+}
+```
+
+**Comment Keywords**: Add or modify keywords to match against rule comments
+**V-ID List**: Add specific vulnerability IDs to exclude regardless of content
 
 ### Adding New Output Formats
 To add new output formats, modify the `Export-Results` function in the script and update the configuration file.
@@ -166,6 +212,8 @@ For large numbers of files, consider:
 2. **Permission errors**: Run PowerShell as Administrator if needed
 3. **Configuration errors**: Verify `config.json` syntax and file paths
 4. **Memory issues**: Process files in smaller batches for very large datasets
+5. **Namespace parsing issues**: Check XML structure if VULN elements aren't found
+6. **Variance filtering not working**: Verify variance configuration in `config.json`
 
 ### Debug Mode
 Enable debug logging by setting `"logLevel": "DEBUG"` in the configuration file.
@@ -204,5 +252,20 @@ For issues, questions, or feature requests:
 
 ---
 
-**Version**: 1.0.0  
+## 📋 Changelog
+
+### Version 1.1.0 (Current)
+- ✨ **Added Variance Filtering**: Automatically filter out variance items based on configurable criteria
+- 🔧 **Enhanced Namespace Handling**: Robust XML parsing with multiple namespace fallback strategies
+- 📊 **New Output Reports**: Separate reports for excluded items with detailed exclusion reasons
+- 🐛 **Improved Error Handling**: Better fallback mechanisms for different CKL file formats
+- 📝 **Enhanced Logging**: Detailed debug information for namespace parsing and variance filtering
+
+### Version 1.0.0
+- 🚀 **Initial Release**: Basic CKL/CKLB parsing and reporting functionality
+
+---
+
+**Version**: 1.1.0  
+**Last Updated**: 2025-08-19  
 **Compatibility**: PowerShell 5.1+, Windows 10/11, Windows Server 2016+
